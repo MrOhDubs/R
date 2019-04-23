@@ -1,0 +1,128 @@
+#### Multiplot
+
+# Multiple plot function
+#
+# ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
+# - cols:   Number of columns in layout
+# - layout: A matrix specifying the layout. If present, 'cols' is ignored.
+#
+# If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+# then plot 1 will go in the upper left, 2 will go in the upper right, and
+# 3 will go all the way across the bottom.
+#
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+
+
+
+
+
+
+#### CramersV Corrplot
+
+calculate_cramer <- function(df) {
+  
+m <- matrix(ncol = length(df),
+          nrow = length(df),
+          dimnames = list(names(df), 
+                          names(df)))
+
+ for (r in seq(nrow(m))){
+   for (c in seq(ncol(m))){
+     m[[r, c]] <- assocstats(table(df[[r]], df[[c]]))$cramer
+   }
+ }
+    return(m)
+}
+
+
+
+####  Quick Bivariate Plots
+
+
+df %>%
+  select(everything()) -> vars
+
+
+feats <- syms(names(vars))
+
+for (i in seq_along(feats)){
+  
+  cat('####', feats[[i]],' \n')
+  
+  if (class(vars[[i]]) %in% c('character', 'factor')){
+      
+    if(length(unique(vars[[i]])) > 20) {
+      vars[[i]] <- fct_lump(vars[[i]], 20)
+    }
+      
+      
+    vars %>%
+      group_by(!!feats[[i]], Received) %>%
+      summarise(count = n()) %>%
+      mutate(point = ifelse(Received == 'Y', count, NA)) %>%
+      group_by(!!feats[[i]]) %>%
+      mutate(total = ifelse(Received == 'Y', sum(count), NA) ) -> sums
+    
+    maxtot <- max(sums$total, na.rm = T)
+    
+    x <- ggplot(data = sums, aes(x = !!feats[[i]], y = count)) +
+      geom_bar(aes(fill = Received),stat = 'identity', position = 'stack') +
+      geom_point( aes(y = (point/total)*max(total, na.rm= T)), shape = 17, cex = 5, col = 'blue') +
+      geom_line( data = sums[!is.na(sums$total),],
+                 aes(x = !!feats[[i]],y = (point/total)*max(total, na.rm= T), group = 1), 
+                 col = 'blue', 
+                 inherit.aes =  F) +
+      geom_hline(yintercept = mean(ifelse(df$Received == 'Y', 1,0)) * maxtot, col = 'red') +
+      geom_text(data = sums[!is.na(sums$total),],
+                aes(x = !!feats[[i]],y = (point/total)*max(total, na.rm= T) + maxtot/18, label = paste0(round(point/total *100,1),'%'), group = 1)) +
+      scale_y_continuous('Count',sec.axis = sec_axis(~ . / maxtot *100, name = 'Percent Accepted')) +
+      coord_flip() +
+      labs(title = feats[[i]], x = feats[[i]], fill = '')
+    print(x)
+    
+  }else if (class(vars[[i]]) %in% c('integer', 'numeric')){
+    x <- vars %>%
+      ggplot(aes(x = !!feats[[i]])) +
+        geom_density(col = 'black' , alpha = 0) +
+        geom_density(aes( fill = Received, col = Received),alpha = .4) +
+        labs(title = feats[[i]], x = feats[[i]], y = 'Density', fill = '') +
+        guides(col = FALSE)
+    print(x)
+}
+
+  cat(' \n \n')
+}
